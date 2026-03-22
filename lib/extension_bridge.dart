@@ -7,7 +7,7 @@ import 'package:get/get.dart';
 import 'package:isar_community/isar.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-
+import 'package:flutter/services.dart';
 import 'Services/Aniyomi/AniyomiExtensions.dart';
 import 'ExtensionManager.dart';
 import 'Services/Mangayomi/Eval/dart/model/source_preference.dart';
@@ -59,8 +59,19 @@ class DartotsuExtensionBridge {
     }
   }
 
+  static Future<bool> isLoaded() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      const channel = MethodChannel('aniyomiExtensionBridge');
+      final result = await channel.invokeMethod<bool>('isLoaded');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   static void Function(String log, bool show) onLog = (log, _) {
-    debugPrint('AnymeXExtensionBridge: $log');
+    debugPrint('DartotsuExtensionBridge: $log');
   };
 }
 

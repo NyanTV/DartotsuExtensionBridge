@@ -12,8 +12,6 @@ export './Models/Pages.dart';
 export './Models/Repo.dart';
 export './Models/Video.dart';
 export './Models/SourcePreference.dart';
-export './Screen/ExtensionList.dart';
-export './Screen/ExtensionManagerScreen.dart';
 export './Settings/Settings.dart';
 
 // maybe needed sometimes
