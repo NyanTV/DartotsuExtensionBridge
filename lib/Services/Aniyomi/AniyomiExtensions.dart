@@ -8,8 +8,18 @@ import 'package:http/http.dart' as http;
 import 'package:install_plugin/install_plugin.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'AniyomiSourceMethods.dart';
 
 class AniyomiExtensions extends Extension {
+  @override
+  String get id => 'aniyomi';
+
+  @override
+  String get name => 'Aniyomi';
+
+  @override
+  SourceMethods createSourceMethods(Source source) =>
+      AniyomiSourceMethods(source);
   AniyomiExtensions() {
     initialize();
   }

@@ -2,8 +2,19 @@ import 'package:dartotsu_extension_bridge/dartotsu_extension_bridge.dart';
 import 'package:get/get.dart';
 
 import 'MangayomiExtensionManager.dart';
+import 'MangayomiSourceMethods.dart';
 
 class MangayomiExtensions extends Extension {
+  @override
+  String get id => 'mangayomi';
+
+  @override
+  String get name => 'Mangayomi';
+
+  @override
+  SourceMethods createSourceMethods(Source source) =>
+      MangayomiSourceMethods(source);
+
   MangayomiExtensions() {
     initialize();
   }

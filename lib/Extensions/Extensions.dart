@@ -1,13 +1,19 @@
 import 'package:get/get.dart';
-
+import '../Models/Repo.dart';
 import '../Models/Source.dart';
+import 'SourceMethods.dart';
 
 abstract class Extension extends GetxController {
   var isInitialized = false.obs;
 
+  String get id;
+  String get name;
+
   bool get supportsAnime => true;
   bool get supportsManga => true;
   bool get supportsNovel => true;
+
+  SourceMethods createSourceMethods(Source source);
 
   final Rx<List<Source>> installedAnimeExtensions = Rx([]);
   final Rx<List<Source>> installedMangaExtensions = Rx([]);
@@ -16,52 +22,56 @@ abstract class Extension extends GetxController {
   final Rx<List<Source>> availableMangaExtensions = Rx([]);
   final Rx<List<Source>> availableNovelExtensions = Rx([]);
 
-  Future<List<Source>> getInstalledAnimeExtensions() => Future.value([]);
+  final Rx<List<Source>> _rawAvailableAnime = Rx([]);
+  final Rx<List<Source>> _rawAvailableManga = Rx([]);
+  final Rx<List<Source>> _rawAvailableNovel = Rx([]);
 
-  Future<List<Source>> fetchAvailableAnimeExtensions(List<String>? repos) =>
-      Future.value([]);
+  final Rx<List<Repo>> _reposAnime = Rx([]);
+  final Rx<List<Repo>> _reposManga = Rx([]);
+  final Rx<List<Repo>> _reposNovel = Rx([]);
 
-  Future<List<Source>> getInstalledMangaExtensions() => Future.value([]);
+  Set<String> get schemes => {};
 
-  Future<List<Source>> fetchAvailableMangaExtensions(List<String>? repos) =>
-      Future.value([]);
+  Future<void> handleSchemes(Uri uri) async {}
 
-  Future<List<Source>> getInstalledNovelExtensions() => Future.value([]);
+  Future<void> initialize() async {
+    isInitialized.value = true;
+  }
 
-  Future<List<Source>> fetchAvailableNovelExtensions(List<String>? repos) =>
-      Future.value([]);
+  Future<void> fetchAnimeExtensions() async {}
+  Future<void> fetchMangaExtensions() async {}
+  Future<void> fetchNovelExtensions() async {}
 
-  Future<void> initialize();
+  Future<void> fetchInstalledAnimeExtensions() async {}
+  Future<void> fetchInstalledMangaExtensions() async {}
+  Future<void> fetchInstalledNovelExtensions() async {}
 
   Future<void> installSource(Source source);
-
   Future<void> uninstallSource(Source source);
-
   Future<void> updateSource(Source source);
 
-  Future<void> onRepoSaved(List<String> repoUrl, ItemType type) async {
-    if (repoUrl.isEmpty) return;
+  Future<void> addRepo(String repoUrl, ItemType type) async {}
+  Future<void> removeRepo(String repoUrl, ItemType type) async {}
+
+  Rx<List<Repo>> getReposRx(ItemType type) {
     switch (type) {
       case ItemType.anime:
-        await fetchAvailableAnimeExtensions(repoUrl);
-        break;
+        return _reposAnime;
       case ItemType.manga:
-        await fetchAvailableMangaExtensions(repoUrl);
-        break;
+        return _reposManga;
       case ItemType.novel:
-        await fetchAvailableNovelExtensions(repoUrl);
-        break;
+        return _reposNovel;
     }
   }
 
-  Rx<List<Source>> getSortedInstalledExtension(ItemType itemType) {
-    switch (itemType) {
+  Rx<List<Source>> getRawAvailableRx(ItemType type) {
+    switch (type) {
       case ItemType.anime:
-        return installedAnimeExtensions;
+        return _rawAvailableAnime;
       case ItemType.manga:
-        return installedMangaExtensions;
+        return _rawAvailableManga;
       case ItemType.novel:
-        return installedNovelExtensions;
+        return _rawAvailableNovel;
     }
   }
 
@@ -87,10 +97,37 @@ abstract class Extension extends GetxController {
     }
   }
 
+  Rx<List<Source>> getSortedInstalledExtension(ItemType itemType) =>
+      getInstalledRx(itemType);
+
+  Future<List<Source>> getInstalledAnimeExtensions() => Future.value([]);
+  Future<List<Source>> fetchAvailableAnimeExtensions(List<String>? repos) =>
+      Future.value([]);
+  Future<List<Source>> getInstalledMangaExtensions() => Future.value([]);
+  Future<List<Source>> fetchAvailableMangaExtensions(List<String>? repos) =>
+      Future.value([]);
+  Future<List<Source>> getInstalledNovelExtensions() => Future.value([]);
+  Future<List<Source>> fetchAvailableNovelExtensions(List<String>? repos) =>
+      Future.value([]);
+
+  Future<void> onRepoSaved(List<String> repoUrl, ItemType type) async {
+    if (repoUrl.isEmpty) return;
+    switch (type) {
+      case ItemType.anime:
+        await fetchAvailableAnimeExtensions(repoUrl);
+        break;
+      case ItemType.manga:
+        await fetchAvailableMangaExtensions(repoUrl);
+        break;
+      case ItemType.novel:
+        await fetchAvailableNovelExtensions(repoUrl);
+        break;
+    }
+  }
+
   int compareVersions(String v1, String v2) {
     final a = v1.split('.').map(int.tryParse).toList();
     final b = v2.split('.').map(int.tryParse).toList();
-
     for (int i = 0; i < a.length || i < b.length; i++) {
       final n1 = i < a.length ? a[i] ?? 0 : 0;
       final n2 = i < b.length ? b[i] ?? 0 : 0;

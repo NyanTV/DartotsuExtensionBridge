@@ -8,9 +8,19 @@ import 'package:dartotsu_extension_bridge/Models/Source.dart';
 import 'package:dartotsu_extension_bridge/Models/Video.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import '../Extensions/SourceMethods.dart';
-import '../Models/Page.dart';
-import '../Models/SourcePreference.dart';
+import '../../Extensions/SourceMethods.dart';
+import '../../Models/Page.dart';
+import '../../Models/SourcePreference.dart';
+
+List<Video> parseVideos(List<dynamic> list) {
+  return list.map((e) => Video.fromJson(Map<String, dynamic>.from(e))).toList();
+}
+
+List<PageUrl> parsePageUrls(List<dynamic> list) {
+  return list
+      .map((e) => PageUrl.fromJson(Map<String, dynamic>.from(e)))
+      .toList();
+}
 
 class AniyomiSourceMethods implements SourceMethods {
   static const platform = MethodChannel('aniyomiExtensionBridge');
@@ -43,6 +53,9 @@ class AniyomiSourceMethods implements SourceMethods {
       Map<String, dynamic>.from(result as Map),
     );
   }
+
+  @override
+  Stream<Video>? getVideoListStream(DEpisode episode) => null;
 
   @override
   Future<Pages> getLatestUpdates(int page) async {

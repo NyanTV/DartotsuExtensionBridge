@@ -1,4 +1,4 @@
-import '../model/video.dart';
+import 'video.dart';
 
 import 'filter.dart';
 import 'm_manga.dart';

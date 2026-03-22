@@ -2,16 +2,18 @@ import 'dart:io';
 
 import 'package:dartotsu_extension_bridge/Settings/Settings.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:isar_community/isar.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'Aniyomi/AniyomiExtensions.dart';
+import 'Services/Aniyomi/AniyomiExtensions.dart';
 import 'ExtensionManager.dart';
-import 'Mangayomi/Eval/dart/model/source_preference.dart';
-import 'Mangayomi/MangayomiExtensions.dart';
-import 'Mangayomi/Models/Source.dart';
+import 'Services/Mangayomi/Eval/dart/model/source_preference.dart';
+import 'Services/Mangayomi/MangayomiExtensions.dart';
+import 'Services/Mangayomi/Models/Source.dart';
+import 'Settings/KvStore.dart';
 
 late Isar isar;
 WebViewEnvironment? webViewEnvironment;
@@ -25,6 +27,7 @@ class DartotsuExtensionBridge {
         SourcePreferenceSchema,
         SourcePreferenceStringValueSchema,
         BridgeSettingsSchema,
+        KvEntrySchema,
       ], directory: p.join(document.path, 'isar'));
     } else {
       isar = isarInstance;
@@ -55,6 +58,10 @@ class DartotsuExtensionBridge {
       }
     }
   }
+
+  static void Function(String log, bool show) onLog = (log, _) {
+    debugPrint('AnymeXExtensionBridge: $log');
+  };
 }
 
 Future<Directory> getDatabaseDirectory(String dirName) async {
