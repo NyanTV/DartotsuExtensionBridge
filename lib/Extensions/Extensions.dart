@@ -35,6 +35,12 @@ abstract class Extension extends GetxController {
   Future<void> handleSchemes(Uri uri) async {}
 
   Future<void> initialize() async {
+    await fetchInstalledAnimeExtensions();
+    await fetchInstalledMangaExtensions();
+    await fetchInstalledNovelExtensions();
+    await fetchAnimeExtensions();
+    await fetchMangaExtensions();
+    await fetchNovelExtensions();
     isInitialized.value = true;
   }
 
