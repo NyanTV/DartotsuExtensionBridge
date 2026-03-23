@@ -107,14 +107,7 @@ class ExtensionManager extends GetxController {
   }
 
   void _scheduleAggregatedUpdate(ItemType type) {
-    _pendingAggregations.add(type);
-    _aggregateTimer?.cancel();
-    _aggregateTimer = Timer(const Duration(milliseconds: 50), () {
-      for (final pendingType in _pendingAggregations) {
-        _updateAggregatedLists(pendingType);
-      }
-      _pendingAggregations.clear();
-    });
+    _updateAggregatedLists(type);
   }
 
   void _refreshAllAggregatedLists() {
