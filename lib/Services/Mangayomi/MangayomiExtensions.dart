@@ -1,5 +1,6 @@
 import 'package:dartotsu_extension_bridge/dartotsu_extension_bridge.dart';
 import 'package:get/get.dart';
+import 'package:hive/hive.dart';
 
 import 'MangayomiExtensionManager.dart';
 import 'MangayomiSourceMethods.dart';
@@ -15,6 +16,8 @@ class MangayomiExtensions extends Extension {
   SourceMethods createSourceMethods(Source source) =>
       MangayomiSourceMethods(source);
 
+  Box get _box => Hive.box('themeData');
+
   MangayomiExtensions() {
     initialize();
   }
@@ -26,16 +29,25 @@ class MangayomiExtensions extends Extension {
     if (isInitialized.value) return;
     isInitialized.value = true;
 
-    final settings = isar.bridgeSettings.getSync(26)!;
-
     await Future.wait([
       getInstalledAnimeExtensions(),
       getInstalledMangaExtensions(),
       getInstalledNovelExtensions(),
-      fetchAvailableAnimeExtensions(settings.mangayomiAnimeExtensions),
-      fetchAvailableMangaExtensions(settings.mangayomiMangaExtensions),
-      fetchAvailableNovelExtensions(settings.mangayomiNovelExtensions),
+      fetchAvailableAnimeExtensions(_loadRepos(ItemType.anime)),
+      fetchAvailableMangaExtensions(_loadRepos(ItemType.manga)),
+      fetchAvailableNovelExtensions(_loadRepos(ItemType.novel)),
     ]);
+  }
+
+  List<String> _loadRepos(ItemType type) {
+    final raw =
+        _box.get('mangayomi${type.name}Repos', defaultValue: <dynamic>[])
+            as List;
+    return raw.cast<String>();
+  }
+
+  void _saveRepos(List<String> repos, ItemType type) {
+    _box.put('mangayomi${type.name}Repos', repos);
   }
 
   @override
@@ -54,22 +66,13 @@ class MangayomiExtensions extends Extension {
     ItemType type,
     List<String>? repos,
   ) async {
-    final settings = isar.bridgeSettings.getSync(26)!;
+    final repoList = repos ?? [];
+    _saveRepos(repoList, type);
 
-    switch (type) {
-      case ItemType.anime:
-        settings.mangayomiAnimeExtensions = repos ?? [];
-        break;
-      case ItemType.manga:
-        settings.mangayomiMangaExtensions = repos ?? [];
-        break;
-      case ItemType.novel:
-        settings.mangayomiNovelExtensions = repos ?? [];
-        break;
-    }
-    isar.writeTxnSync(() => isar.bridgeSettings.putSync(settings));
-
-    final sources = await _manager.fetchAvailableExtensionsStream(type, repos);
+    final sources = await _manager.fetchAvailableExtensionsStream(
+      type,
+      repoList.isEmpty ? null : repoList,
+    );
     final installedIds = getInstalledRx(type).value.map((e) => e.id).toSet();
 
     final list = sources
@@ -85,6 +88,34 @@ class MangayomiExtensions extends Extension {
     getAvailableRx(type).value = list;
     checkForUpdates(type);
     return list;
+  }
+
+  @override
+  Future<void> addRepo(String repoUrl, ItemType type) async {
+    final repos = _loadRepos(type);
+    if (repos.contains(repoUrl)) return;
+    final updated = [...repos, repoUrl];
+    await _fetchAvailable(type, updated);
+    getReposRx(type).value = updated
+        .map((url) => Repo(url: url, managerId: id))
+        .toList();
+  }
+
+  @override
+  Future<void> removeRepo(String repoUrl, ItemType type) async {
+    final repos = _loadRepos(type).where((r) => r != repoUrl).toList();
+    await _fetchAvailable(type, repos);
+    getReposRx(type).value = repos
+        .map((url) => Repo(url: url, managerId: id))
+        .toList();
+  }
+
+  @override
+  Rx<List<Repo>> getReposRx(ItemType type) {
+    final repos = _loadRepos(
+      type,
+    ).map((url) => Repo(url: url, managerId: id)).toList();
+    return Rx<List<Repo>>(repos);
   }
 
   @override

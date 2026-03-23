@@ -5,12 +5,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get_rx/src/rx_types/rx_types.dart';
+import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../Logger.dart';
-import '../../Settings/KvStore.dart';
 import '../../dartotsu_extension_bridge.dart';
 import 'Models/CloudStreamSource.dart';
 import 'CloudStreamSourceMethods.dart';
@@ -18,7 +18,6 @@ import 'CloudStreamSourceMethods.dart';
 List<dynamic> _decodeJsonList(String body) => jsonDecode(body) as List<dynamic>;
 Map<String, dynamic> _decodeJsonMap(String body) =>
     jsonDecode(body) as Map<String, dynamic>;
-
 String _encodeCloudStreamMeta(Map<String, dynamic> data) => jsonEncode(data);
 
 List<CloudStreamSource> _hydrateCloudStreamSources(Map<String, dynamic> args) {
@@ -41,7 +40,6 @@ List<CloudStreamSource> _hydrateCloudStreamSources(Map<String, dynamic> args) {
         map['repo'] = meta['repo'] ?? map['repo'];
       } catch (_) {}
     }
-
     return CloudStreamSource.fromJson(map);
   }).toList();
 }
@@ -59,6 +57,8 @@ Future<Directory?> _getCloudStreamPluginDirectory() async {
 }
 
 class CloudStreamExtensions extends Extension {
+  Box get _box => Hive.box('themeData');
+
   @override
   String get id => 'cloudstream';
 
@@ -90,7 +90,6 @@ class CloudStreamExtensions extends Extension {
     try {
       final dir = await _getCloudStreamPluginDirectory();
       if (dir == null) return;
-
       if (await dir.exists()) {
         final files = dir.listSync().whereType<File>().where(
           (f) => f.path.endsWith('.cs3'),
@@ -98,16 +97,13 @@ class CloudStreamExtensions extends Extension {
         for (final file in files) {
           try {
             await platform.invokeMethod('loadPlugin', {'path': file.path});
-            Logger.log("Loaded persisted CloudStream plugin: ${file.path}");
           } catch (e) {
-            Logger.log(
-              "Failed to load persisted CloudStream plugin ${file.path}: $e",
-            );
+            Logger.log("Failed to load plugin ${file.path}: $e");
           }
         }
       }
     } catch (e) {
-      Logger.log("Error loading persisted CloudStream plugins: $e");
+      Logger.log("Error loading persisted plugins: $e");
     }
   }
 
@@ -130,8 +126,8 @@ class CloudStreamExtensions extends Extension {
             );
           }
         }
-      } catch (e, st) {
-        Logger.log("Failed to fetch CloudStream repo ${repo.url}: $e - $st");
+      } catch (e) {
+        Logger.log("Failed to fetch CloudStream repo ${repo.url}: $e");
       }
     }
 
@@ -168,7 +164,8 @@ class CloudStreamExtensions extends Extension {
       for (final e in result) {
         final map = Map<String, dynamic>.from(e);
         final internalName = map['internalName'] ?? map['name'];
-        metas[internalName as String] = getVal<String>('cs_meta_$internalName');
+        metas[internalName as String] =
+            _box.get('cs_meta_$internalName') as String?;
       }
 
       final sources = await compute(_hydrateCloudStreamSources, {
@@ -192,10 +189,6 @@ class CloudStreamExtensions extends Extension {
   Future<void> installSource(Source source) async {
     if (source is CloudStreamSource && source.pluginUrl != null) {
       try {
-        Logger.log(
-          "Downloading CloudStream plugin: ${source.name} from ${source.pluginUrl}",
-        );
-
         final response = await http.get(Uri.parse(source.pluginUrl!));
         if (response.statusCode != 200) {
           throw Exception(
@@ -204,23 +197,17 @@ class CloudStreamExtensions extends Extension {
         }
 
         final dir = await _getCloudStreamPluginDirectory();
-        if (dir == null) {
-          throw Exception("Failed to get CloudStream plugin directory");
-        }
+        if (dir == null) throw Exception("Failed to get plugin directory");
 
         final filename = '${source.internalName ?? source.name}.cs3';
         final file = File(p.join(dir.path, filename));
         await file.writeAsBytes(response.bodyBytes);
-
-        Logger.log("Saved CloudStream plugin to ${file.path}");
 
         final bool success = await platform.invokeMethod('loadPlugin', {
           'path': file.path,
         });
 
         if (success) {
-          Logger.log("Successfully loaded CloudStream plugin: ${source.name}");
-
           final metaToSave = {
             'iconUrl': source.iconUrl,
             'language': source.lang,
@@ -230,7 +217,10 @@ class CloudStreamExtensions extends Extension {
             'repo': source.repo,
           };
           final encodedMeta = await compute(_encodeCloudStreamMeta, metaToSave);
-          setVal('cs_meta_${source.internalName ?? source.name}', encodedMeta);
+          _box.put(
+            'cs_meta_${source.internalName ?? source.name}',
+            encodedMeta,
+          );
 
           await fetchInstalledAnimeExtensions();
           await fetchAnimeExtensions();
@@ -248,26 +238,20 @@ class CloudStreamExtensions extends Extension {
   Future<void> uninstallSource(Source source) async {
     if (source is CloudStreamSource) {
       try {
-        Logger.log("Uninstalling CloudStream plugin: ${source.name}");
-
         final dir = await _getCloudStreamPluginDirectory();
         if (dir != null) {
           final filename = '${source.internalName ?? source.name}.cs3';
           final file = File(p.join(dir.path, filename));
-          if (await file.exists()) {
-            await file.delete();
-            Logger.log("Deleted plugin file: ${file.path}");
-          }
+          if (await file.exists()) await file.delete();
         }
 
         await platform.invokeMethod('deletePlugin', {
           'internalName': source.internalName ?? source.name,
           'repositoryUrl': source.repo ?? '',
         });
-        await KvStore.remove('cs_meta_${source.internalName ?? source.name}');
-        Logger.log(
-          "Successfully uninstalled CloudStream plugin: ${source.name}",
-        );
+
+        _box.delete('cs_meta_${source.internalName ?? source.name}');
+
         await fetchInstalledAnimeExtensions();
         await fetchAnimeExtensions();
       } catch (e) {
@@ -285,17 +269,12 @@ class CloudStreamExtensions extends Extension {
   @override
   Future<void> addRepo(String repoUrl, ItemType type) async {
     final repos = _loadRepos();
-
-    if (repos.any((r) => r.url == repoUrl)) {
-      Logger.log("CloudStream repo already exists: $repoUrl");
-      return;
-    }
+    if (repos.any((r) => r.url == repoUrl)) return;
 
     late final http.Response response;
     try {
       response = await http.get(Uri.parse(repoUrl));
     } catch (e) {
-      Logger.log("CloudStream repo unreachable: $repoUrl — $e");
       throw Exception("Failed to reach repo URL: $repoUrl");
     }
 
@@ -322,17 +301,11 @@ class CloudStreamExtensions extends Extension {
         decoded.containsKey('pluginLists') &&
         decoded['pluginLists'] is List) {
       final pluginLists = (decoded['pluginLists'] as List).cast<String>();
-      Logger.log(
-        "Detected meta-repo at $repoUrl with ${pluginLists.length} sub-repos",
-      );
-
       for (final subUrl in pluginLists) {
         try {
           await addRepo(subUrl, type);
         } catch (e) {
-          Logger.log(
-            "Failed to add sub-repo $subUrl from meta-repo $repoUrl: $e",
-          );
+          Logger.log("Failed to add sub-repo $subUrl: $e");
         }
       }
       return;
@@ -364,15 +337,17 @@ class CloudStreamExtensions extends Extension {
   }
 
   List<Repo> _loadRepos() {
-    final key = 'cloudstreamAnimeRepos';
-    final encoded = getVal<List<String>>(key);
-    if (encoded == null) return [];
-    return encoded.map((e) => Repo.fromJson(jsonDecode(e))).toList();
+    final raw =
+        _box.get('cloudstreamAnimeRepos', defaultValue: <dynamic>[]) as List;
+    if (raw.isEmpty) return [];
+    return raw.cast<String>().map((e) => Repo.fromJson(jsonDecode(e))).toList();
   }
 
   void _saveRepos(List<Repo> repos) {
-    final key = 'cloudstreamAnimeRepos';
-    setVal(key, repos.map((e) => jsonEncode(e.toJson())).toList());
+    _box.put(
+      'cloudstreamAnimeRepos',
+      repos.map((e) => jsonEncode(e.toJson())).toList(),
+    );
   }
 
   @override
@@ -389,7 +364,6 @@ class CloudStreamExtensions extends Extension {
       'cloudstreamrepo://',
       '',
     );
-
     await addRepo(
       urlWithoutScheme.startsWith('http')
           ? urlWithoutScheme

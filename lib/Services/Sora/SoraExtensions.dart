@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 import 'package:http/http.dart';
 
 import '../../Extensions/Extensions.dart';
@@ -8,13 +9,14 @@ import '../../Extensions/SourceMethods.dart';
 import '../../Logger.dart';
 import '../../Models/Repo.dart';
 import '../../Models/Source.dart';
-import '../../Settings/KvStore.dart';
 import '../Mangayomi/http/m_client.dart';
 import 'Models/Source.dart';
 import 'SoraSourceMethods.dart';
 
 class SoraExtensions extends Extension {
   static final _client = MClient.init();
+
+  Box get _box => Hive.box('themeData');
 
   @override
   String get id => 'sora';
@@ -27,6 +29,15 @@ class SoraExtensions extends Extension {
 
   @override
   SourceMethods createSourceMethods(Source source) => SoraSourceMethods(source);
+
+  @override
+  Future<void> initialize() async {
+    await fetchInstalledAnimeExtensions();
+    await fetchInstalledMangaExtensions();
+    await fetchAnimeExtensions();
+    await fetchMangaExtensions();
+    isInitialized.value = true;
+  }
 
   @override
   Future<void> fetchAnimeExtensions() async {
@@ -45,14 +56,12 @@ class SoraExtensions extends Extension {
 
   @override
   Future<void> fetchInstalledAnimeExtensions() async {
-    final installed = _loadInstalled(ItemType.anime);
-    getInstalledRx(ItemType.anime).value = installed;
+    getInstalledRx(ItemType.anime).value = _loadInstalled(ItemType.anime);
   }
 
   @override
   Future<void> fetchInstalledMangaExtensions() async {
-    final installed = _loadInstalled(ItemType.manga);
-    getInstalledRx(ItemType.manga).value = installed;
+    getInstalledRx(ItemType.manga).value = _loadInstalled(ItemType.manga);
   }
 
   @override
@@ -62,23 +71,15 @@ class SoraExtensions extends Extension {
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       final uri = Uri.tryParse(repoUrl);
-      if (uri == null || !uri.hasScheme) {
-        throw Exception("Invalid repo URL");
-      }
+      if (uri == null || !uri.hasScheme) throw Exception("Invalid repo URL");
 
       final repos = _loadRepos(type);
-
-      if (repos.any((r) => r.url == repoUrl)) {
-        return;
-      }
+      if (repos.any((r) => r.url == repoUrl)) return;
 
       final res = await _client.get(uri);
-      if (res.statusCode != 200) {
-        throw Exception("Failed to fetch repo");
-      }
+      if (res.statusCode != 200) throw Exception("Failed to fetch repo");
 
       final decoded = jsonDecode(res.body);
-
       final parsed = await compute(_parseExtensions, (res.body, repoUrl, type));
 
       String? repoName;
@@ -115,13 +116,11 @@ class SoraExtensions extends Extension {
       );
 
       final updatedRepos = List<Repo>.from(repos)..add(repo);
-
       _saveRepos(updatedRepos, type);
-      final rx = getAvailableRx(type);
-      final existing = rx.value;
 
+      final rx = getAvailableRx(type);
       final merged = {
-        for (final s in existing) s.id: s,
+        for (final s in rx.value) s.id: s,
         for (final s in parsed) s.id: s,
       }.values.toList(growable: false);
 
@@ -139,12 +138,10 @@ class SoraExtensions extends Extension {
       final repos = _loadRepos(
         type,
       ).where((r) => r.url != repoUrl).toList(growable: false);
-
       _saveRepos(repos, type);
 
       final rx = getAvailableRx(type);
       rx.value = rx.value.where((s) => s.repo != repoUrl).toList();
-
       getReposRx(type).value = repos;
     } catch (e) {
       Logger.log("Failed to remove repo $repoUrl: $e");
@@ -158,9 +155,7 @@ class SoraExtensions extends Extension {
     getReposRx(type).value = repos;
 
     final results = await Future.wait(repos.map((r) => _fetchRepo(r, type)));
-
     final allSources = results.expand((e) => e).toList(growable: false);
-
     final installed = getInstalledRx(type).value;
     final installedIds = installed.map((e) => e.id).toSet();
 
@@ -176,7 +171,6 @@ class SoraExtensions extends Extension {
     try {
       final res = await _client.get(Uri.parse(repo.url));
       if (res.statusCode != 200) return const [];
-
       return compute(_parseExtensions, (res.body, repo.url, type));
     } catch (e) {
       Logger.log("Repo failed ${repo.url}: $e");
@@ -188,10 +182,8 @@ class SoraExtensions extends Extension {
     (String body, String repoUrl, ItemType itemType) args,
   ) {
     final (body, repoUrl, itemType) = args;
-
     try {
       final decoded = jsonDecode(body);
-
       Iterable<Map<String, dynamic>> extensions;
 
       if (decoded is List) {
@@ -207,16 +199,13 @@ class SoraExtensions extends Extension {
       }
 
       final sources = <Source>[];
-
       for (final ext in extensions) {
         final type = (ext['type'] ?? '').toString().toLowerCase();
-
         final matches = switch (itemType) {
           ItemType.anime => type == 'anime' || type == 'movie',
           ItemType.manga => type == 'mangas',
           _ => false,
         };
-
         if (!matches) continue;
 
         sources.add(
@@ -233,7 +222,6 @@ class SoraExtensions extends Extension {
           ),
         );
       }
-
       return sources;
     } catch (_) {
       return const [];
@@ -243,26 +231,19 @@ class SoraExtensions extends Extension {
   @override
   Future<void> installSource(Source source) async {
     final s = source as SSource;
-
     try {
-      if (s.sourceCodeUrl == null) {
-        throw Exception("Missing sourceCodeUrl");
-      }
+      if (s.sourceCodeUrl == null) throw Exception("Missing sourceCodeUrl");
 
       final res = await _client.get(Uri.parse(s.sourceCodeUrl!));
-      if (res.statusCode != 200) {
+      if (res.statusCode != 200)
         throw Exception("Failed to download extension");
-      }
 
       final installed = s..sourceCode = res.body;
-
       final installedList = _loadInstalled(s.itemType!);
-
       installedList.removeWhere((e) => e.id == s.id);
       installedList.add(installed);
 
       _saveInstalled(installedList, s.itemType!);
-
       getInstalledRx(s.itemType!).value = List.unmodifiable(installedList);
 
       final avail = getAvailableRx(s.itemType!);
@@ -276,11 +257,9 @@ class SoraExtensions extends Extension {
   @override
   Future<void> uninstallSource(Source source) async {
     final s = source as SSource;
-
     try {
       final type = s.itemType!;
       final installed = _loadInstalled(type);
-
       installed.removeWhere((e) => e.id == s.id);
 
       _saveInstalled(installed, type);
@@ -288,7 +267,6 @@ class SoraExtensions extends Extension {
 
       final raw = getRawAvailableRx(type).value;
       final installedIds = installed.map((e) => e.id).toSet();
-
       getAvailableRx(type).value = List.unmodifiable(
         raw.where((e) => !installedIds.contains(e.id)),
       );
@@ -300,19 +278,13 @@ class SoraExtensions extends Extension {
   @override
   Future<void> updateSource(Source source) async {
     final s = source as SSource;
-
     try {
-      if (s.sourceCodeUrl == null) {
-        throw Exception("Missing sourceCodeUrl");
-      }
+      if (s.sourceCodeUrl == null) throw Exception("Missing sourceCodeUrl");
 
       final res = await _client.get(Uri.parse(s.sourceCodeUrl!));
-      if (res.statusCode != 200) {
-        throw Exception("Failed to download update");
-      }
+      if (res.statusCode != 200) throw Exception("Failed to download update");
 
       final installed = _loadInstalled(s.itemType!);
-
       final index = installed.indexWhere((e) => e.id == s.id);
       if (index == -1) return;
 
@@ -322,7 +294,6 @@ class SoraExtensions extends Extension {
         ..hasUpdate = false;
 
       _saveInstalled(installed, s.itemType!);
-
       getInstalledRx(s.itemType!).value = List.unmodifiable(installed);
     } catch (e) {
       Logger.log("Update failed ${s.id}: $e");
@@ -335,7 +306,6 @@ class SoraExtensions extends Extension {
     if (installed.isEmpty || available.isEmpty) return;
 
     final repoMap = {for (final s in available) s.id: s};
-
     bool changed = false;
 
     for (var i = 0; i < installed.length; i++) {
@@ -358,44 +328,41 @@ class SoraExtensions extends Extension {
   }
 
   List<Repo> _loadRepos(ItemType type) {
-    final encoded = getVal<List<String>>('$id${type.name}Repos');
-    if (encoded == null || encoded.isEmpty) return const [];
-
+    final raw = _box.get('$id${type.name}Repos', defaultValue: <dynamic>[]);
+    final encoded = (raw as List).cast<String>();
+    if (encoded.isEmpty) return const [];
     return encoded
         .map((e) => Repo.fromJson(jsonDecode(e)))
         .toList(growable: false);
   }
 
   void _saveRepos(List<Repo> repos, ItemType type) {
-    final key = '$id${type.name}Repos';
-
-    setVal(
-      key,
-      repos.map((e) => jsonEncode(e.toJson())).toList(growable: false),
+    _box.put(
+      '$id${type.name}Repos',
+      repos.map((e) => jsonEncode(e.toJson())).toList(),
     );
   }
 
   List<SSource> _loadInstalled(ItemType type) {
-    final encoded = getVal<List<String>>('$id-Installed-${type.name}');
-    if (encoded == null || encoded.isEmpty) return [];
-
+    final raw = _box.get(
+      '$id-Installed-${type.name}',
+      defaultValue: <dynamic>[],
+    );
+    final encoded = (raw as List).cast<String>();
+    if (encoded.isEmpty) return [];
     final list = <SSource>[];
-
     for (final e in encoded) {
       try {
         list.add(SSource.fromJson(jsonDecode(e)));
       } catch (_) {}
     }
-
     return list;
   }
 
   void _saveInstalled(List<SSource> list, ItemType type) {
-    final key = '$id-Installed-${type.name}';
-
-    setVal(
-      key,
-      list.map((e) => jsonEncode(e.toJson())).toList(growable: false),
+    _box.put(
+      '$id-Installed-${type.name}',
+      list.map((e) => jsonEncode(e.toJson())).toList(),
     );
   }
 
@@ -416,26 +383,15 @@ class SoraExtensions extends Extension {
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         final type = json["type"] as String?;
-
         final itemType = switch (type?.toLowerCase()) {
           "anime" => ItemType.anime,
           "manga" => ItemType.manga,
           _ => ItemType.anime,
         };
-
         await addRepo(url, itemType);
       }
     } catch (e) {
       debugPrint("Failed to fetch repo JSON: $e");
     }
-  }
-
-  @override
-  Future<void> initialize() async {
-    await fetchInstalledAnimeExtensions();
-    await fetchInstalledMangaExtensions();
-    await fetchAnimeExtensions();
-    await fetchMangaExtensions();
-    isInitialized.value = true;
   }
 }

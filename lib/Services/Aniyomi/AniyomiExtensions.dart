@@ -5,12 +5,12 @@ import 'dart:io';
 import 'package:device_apps/device_apps.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
 import 'package:install_plugin/install_plugin.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../../Logger.dart';
-import '../../Settings/KvStore.dart';
 import '../../dartotsu_extension_bridge.dart';
 import '../Mangayomi/http/m_client.dart';
 import 'AniyomiSourceMethods.dart';
@@ -18,6 +18,8 @@ import 'Models/Source.dart';
 
 class AniyomiExtensions extends Extension {
   final _client = MClient.init();
+
+  Box get _box => Hive.box('themeData');
 
   @override
   String get id => 'aniyomi';
@@ -85,7 +87,6 @@ class AniyomiExtensions extends Extension {
           filtered.add(group.first);
         }
       }
-
       return filtered;
     } catch (e) {
       return [];
@@ -127,12 +128,10 @@ class AniyomiExtensions extends Extension {
 
     final results = await Future.wait(repos.map((r) => _fetchRepo(r, type)));
     final all = results.expand((e) => e).toList(growable: false);
-
     final installed = getInstalledRx(type).value;
     final installedIds = installed.map((e) => e.id).toSet();
 
     _detectUpdates(all.cast<ASource>(), type);
-
     getRawAvailableRx(type).value = List.unmodifiable(all);
 
     return List.unmodifiable(all.where((s) => !installedIds.contains(s.id)));
@@ -153,7 +152,6 @@ class AniyomiExtensions extends Extension {
     (String body, String repoUrl, ItemType itemType) args,
   ) {
     final (body, repoUrl, targetType) = args;
-
     try {
       final decoded = jsonDecode(body);
       if (decoded is! List) return const [];
@@ -220,7 +218,6 @@ class AniyomiExtensions extends Extension {
           filtered.add(group.first);
         }
       }
-
       return List.unmodifiable(filtered);
     } catch (e) {
       Logger.log("Failed to parse extensions from $repoUrl: $e");
@@ -231,13 +228,11 @@ class AniyomiExtensions extends Extension {
   void _detectUpdates(List<ASource> available, ItemType type) {
     final installed = getInstalledRx(type).value as List<ASource>;
     final repoMap = {for (var s in available) s.id: s};
-
     bool changed = false;
 
     for (var i = 0; i < installed.length; i++) {
       final inst = installed[i];
       final repo = repoMap[inst.id];
-
       if (repo == null) continue;
 
       if (compareVersions(repo.version ?? "0", inst.version ?? "0") > 0) {
@@ -246,7 +241,6 @@ class AniyomiExtensions extends Extension {
           ..apkName = repo.apkName
           ..iconUrl = repo.iconUrl
           ..versionLast = repo.version;
-
         changed = true;
       }
     }
@@ -268,7 +262,6 @@ class AniyomiExtensions extends Extension {
           .split('/')
           .last
           .replaceAll('.apk', '');
-
       final res = await _client.get(Uri.parse(aSource.apkUrl!));
 
       if (res.statusCode != 200) {
@@ -276,9 +269,7 @@ class AniyomiExtensions extends Extension {
       }
 
       final tempDir = await getTemporaryDirectory();
-      final apkFileName = '$packageName.apk';
-      final apkFile = File(path.join(tempDir.path, apkFileName));
-
+      final apkFile = File(path.join(tempDir.path, '$packageName.apk'));
       await apkFile.writeAsBytes(res.bodyBytes);
 
       final result = await InstallPlugin.installApk(
@@ -286,9 +277,7 @@ class AniyomiExtensions extends Extension {
         appId: packageName,
       );
 
-      if (await apkFile.exists()) {
-        await apkFile.delete();
-      }
+      if (await apkFile.exists()) await apkFile.delete();
 
       if (result['isSuccess'] != true) {
         throw Exception(
@@ -306,10 +295,8 @@ class AniyomiExtensions extends Extension {
         case ItemType.manga:
           await fetchInstalledMangaExtensions();
           break;
-        case ItemType.novel:
-          break;
         default:
-          throw Exception('Unsupported item type: ${source.itemType}');
+          break;
       }
 
       Logger.log('Successfully installed package: $packageName');
@@ -344,7 +331,6 @@ class AniyomiExtensions extends Extension {
 
       const timeout = Duration(seconds: 10);
       final start = DateTime.now();
-
       while (DateTime.now().difference(start) < timeout) {
         final stillInstalled = await DeviceApps.isAppInstalled(packageName);
         if (!stillInstalled) break;
@@ -359,7 +345,6 @@ class AniyomiExtensions extends Extension {
       final raw = getRawAvailableRx(type).value;
       final installed = getInstalledRx(type).value;
       final installedIds = installed.map((e) => e.id).toSet();
-
       getAvailableRx(type).value = List.unmodifiable(
         raw.where((e) => !installedIds.contains(e.id)),
       );
@@ -371,10 +356,8 @@ class AniyomiExtensions extends Extension {
         case ItemType.manga:
           await fetchInstalledMangaExtensions();
           break;
-        case ItemType.novel:
-          break;
         default:
-          throw Exception('Unsupported item type: ${source.itemType}');
+          break;
       }
 
       Logger.log('Successfully uninstalled package: $packageName');
@@ -393,17 +376,13 @@ class AniyomiExtensions extends Extension {
   Future<void> addRepo(String repoUrl, ItemType type) async {
     try {
       final uri = Uri.tryParse(repoUrl);
-      if (uri == null || !uri.hasScheme) {
-        throw Exception("Invalid repo URL");
-      }
+      if (uri == null || !uri.hasScheme) throw Exception("Invalid repo URL");
 
       final repos = _loadRepos(type);
       if (repos.any((r) => r.url == repoUrl)) return;
 
       final res = await _client.get(uri);
-      if (res.statusCode != 200) {
-        throw Exception("Failed to fetch repo");
-      }
+      if (res.statusCode != 200) throw Exception("Failed to fetch repo");
 
       final repo = Repo(url: repoUrl, managerId: id);
       final updatedRepos = List<Repo>.from(repos)..add(repo);
@@ -412,9 +391,8 @@ class AniyomiExtensions extends Extension {
       final parsed = await compute(_parseExtensions, (res.body, repoUrl, type));
 
       final rx = getAvailableRx(type);
-      final existing = rx.value;
       final merged = {
-        for (final s in existing) s.id: s,
+        for (final s in rx.value) s.id: s,
         for (final s in parsed) s.id: s,
       }.values.toList(growable: false);
 
@@ -436,7 +414,6 @@ class AniyomiExtensions extends Extension {
 
       final rx = getAvailableRx(type);
       rx.value = rx.value.where((s) => s.repo != repoUrl).toList();
-
       getReposRx(type).value = repos;
     } catch (e) {
       Logger.log("Failed to remove repo $repoUrl: $e");
@@ -447,21 +424,21 @@ class AniyomiExtensions extends Extension {
     final newKey = '$id${type.name}Repos';
     final oldKey = 'aniyomi${type.name}ReposV2';
 
-    final encoded =
-        getVal<List<String>>(newKey) ?? getVal<List<String>>(oldKey);
-    if (encoded == null || encoded.isEmpty) return const [];
+    List<dynamic>? raw = _box.get(newKey);
+    raw ??= _box.get(oldKey);
 
-    return encoded
+    if (raw == null || raw.isEmpty) return const [];
+    return raw
+        .cast<String>()
         .map((e) => Repo.fromJson(jsonDecode(e)))
         .toSet()
         .toList(growable: false);
   }
 
   void _saveRepos(List<Repo> repos, ItemType type) {
-    final key = '$id${type.name}Repos';
-    setVal(
-      key,
-      repos.toSet().map((e) => jsonEncode(e.toJson())).toList(growable: false),
+    _box.put(
+      '$id${type.name}Repos',
+      repos.toSet().map((e) => jsonEncode(e.toJson())).toList(),
     );
   }
 
