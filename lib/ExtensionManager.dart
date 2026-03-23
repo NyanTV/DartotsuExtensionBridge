@@ -309,15 +309,25 @@ extension SourceExecution on Source {
 
   String get extensionType => getSourceManager(this).id;
 
-  String get managerIcon => switch (this) {
-    ASource _ => 'https://aniyomi.org/img/logo-128px.png',
-    MSource _ =>
-      'https://raw.githubusercontent.com/kodjodevf/mangayomi/main/assets/app_icons/icon-red.png',
-    SSource _ => 'https://static.everythingmoe.com/icons/sora.png',
-    CloudStreamSource _ =>
-      'https://static.everythingmoe.com/icons/cloudstream.png',
-    _ => 'mangayomi',
-  };
+  String get managerIcon {
+    try {
+      final managerId = getSourceManager(this).id;
+      switch (managerId) {
+        case 'aniyomi':
+          return 'https://aniyomi.org/img/logo-128px.png';
+        case 'mangayomi':
+          return 'https://raw.githubusercontent.com/kodjodevf/mangayomi/main/assets/app_icons/icon-red.png';
+        case 'sora':
+          return 'https://static.everythingmoe.com/icons/sora.png';
+        case 'cloudstream':
+          return 'https://raw.githubusercontent.com/recloudstream/cloudstream/master/app/src/main/ic_launcher-playstore.png';
+        default:
+          return 'https://raw.githubusercontent.com/kodjodevf/mangayomi/main/assets/app_icons/icon-red.png';
+      }
+    } catch (_) {
+      return 'https://raw.githubusercontent.com/kodjodevf/mangayomi/main/assets/app_icons/icon-red.png';
+    }
+  }
 
   Future<void> install() async => getSourceManager(this).installSource(this);
   Future<void> uninstall() async =>
