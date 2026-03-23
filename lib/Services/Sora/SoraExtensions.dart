@@ -429,4 +429,13 @@ class SoraExtensions extends Extension {
       debugPrint("Failed to fetch repo JSON: $e");
     }
   }
+
+  @override
+  Future<void> initialize() async {
+    await fetchInstalledAnimeExtensions();
+    await fetchInstalledMangaExtensions();
+    await fetchAnimeExtensions();
+    await fetchMangaExtensions();
+    isInitialized.value = true;
+  }
 }
