@@ -123,7 +123,7 @@ const MSourceSchema = CollectionSchema(
   getId: _mSourceGetId,
   getLinks: _mSourceGetLinks,
   attach: _mSourceAttach,
-  version: '3.3.0',
+  version: '3.3.2',
 );
 
 int _mSourceEstimateSize(
