@@ -37,6 +37,7 @@ class AniyomiBridge(private val context: Context) : MethodChannel.MethodCallHand
     ) {
         Log.d("AniyomiBridge", "Method called: ${call.method} with args: ${call.arguments}")
         when (call.method) {
+            "isLoaded" -> result.success(true)
             "getInstalledAnimeExtensions" -> getInstalledAnimeExtensions(call, result)
             "getInstalledMangaExtensions" -> getInstalledMangaExtensions(call, result)
             "fetchAnimeExtensions" -> fetchAnimeExtensions(call, result)

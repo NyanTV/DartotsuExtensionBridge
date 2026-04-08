@@ -80,8 +80,12 @@ class CloudStreamExtensions extends Extension {
 
   @override
   Future<void> initialize() async {
-    await platform.invokeMethod('initialize');
-    await loadPersistedPlugins();
+    try {
+      await platform.invokeMethod('initialize');
+      await loadPersistedPlugins();
+    } catch (e) {
+      Logger.log("CloudStream bridge unavailable: $e");
+    }
     _reposAnimeCs.value = _loadRepos();
     await super.initialize();
   }
