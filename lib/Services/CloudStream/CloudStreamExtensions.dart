@@ -71,8 +71,7 @@ class CloudStreamExtensions extends Extension {
 
   static const platform = MethodChannel('cloudstreamExtensionBridge');
 
-  final Rx<List<Source>> installedAnimeExtensions = Rx([]);
-  final Rx<List<Source>> availableAnimeExtensions = Rx([]);
+  final Rx<List<Repo>> _reposAnimeCs = Rx<List<Repo>>([]);
 
   @override
   bool get supportsNovel => false;
@@ -83,6 +82,7 @@ class CloudStreamExtensions extends Extension {
   Future<void> initialize() async {
     await platform.invokeMethod('initialize');
     await loadPersistedPlugins();
+    _reposAnimeCs.value = _loadRepos();
     await super.initialize();
   }
 
@@ -131,15 +131,15 @@ class CloudStreamExtensions extends Extension {
       }
     }
 
-    final installedNames = installedAnimeExtensions.value
-        .map((e) => e.name)
-        .toSet();
-    final installedInternalNames = installedAnimeExtensions.value
+    final installedNames = getInstalledRx(
+      ItemType.anime,
+    ).value.map((e) => e.name).toSet();
+    final installedInternalNames = getInstalledRx(ItemType.anime).value
         .map((e) => (e as CloudStreamSource).internalName)
         .where((name) => name != null)
         .toSet();
 
-    availableAnimeExtensions.value = allAvailable.where((s) {
+    getAvailableRx(ItemType.anime).value = allAvailable.where((s) {
       final source = s as CloudStreamSource;
       return !installedNames.contains(source.name) &&
           !installedInternalNames.contains(source.internalName);
@@ -173,7 +173,7 @@ class CloudStreamExtensions extends Extension {
         'metas': metas,
       });
 
-      installedAnimeExtensions.value = sources;
+      getInstalledRx(ItemType.anime).value = sources;
     } catch (e) {
       Logger.log("Error fetching installed CloudStream extensions: $e");
     }
@@ -290,6 +290,7 @@ class CloudStreamExtensions extends Extension {
         await compute(_decodeJsonList, response.body);
         repos.add(Repo(url: repoUrl, managerId: 'cloudstream'));
         _saveRepos(repos);
+        _reposAnimeCs.value = List<Repo>.from(repos);
         await fetchAnimeExtensions();
         return;
       } catch (e) {
@@ -313,6 +314,7 @@ class CloudStreamExtensions extends Extension {
 
     repos.add(Repo(url: repoUrl, managerId: 'cloudstream'));
     _saveRepos(repos);
+    _reposAnimeCs.value = List<Repo>.from(repos);
     await fetchAnimeExtensions();
   }
 
@@ -321,19 +323,14 @@ class CloudStreamExtensions extends Extension {
     final repos = _loadRepos();
     repos.removeWhere((r) => r.url == repoUrl);
     _saveRepos(repos);
+    _reposAnimeCs.value = List<Repo>.from(repos);
     await fetchAnimeExtensions();
   }
 
   @override
-  Rx<List<Source>> getInstalledRx(ItemType type) {
-    if (type == ItemType.anime) return installedAnimeExtensions;
-    return Rx([]);
-  }
-
-  @override
-  Rx<List<Source>> getAvailableRx(ItemType type) {
-    if (type == ItemType.anime) return availableAnimeExtensions;
-    return Rx([]);
+  Rx<List<Repo>> getReposRx(ItemType type) {
+    if (type == ItemType.anime) return _reposAnimeCs;
+    return Rx<List<Repo>>([]);
   }
 
   List<Repo> _loadRepos() {
@@ -348,11 +345,6 @@ class CloudStreamExtensions extends Extension {
       'cloudstreamAnimeRepos',
       repos.map((e) => jsonEncode(e.toJson())).toList(),
     );
-  }
-
-  @override
-  Rx<List<Repo>> getReposRx(ItemType type) {
-    return Rx<List<Repo>>(_loadRepos());
   }
 
   @override
