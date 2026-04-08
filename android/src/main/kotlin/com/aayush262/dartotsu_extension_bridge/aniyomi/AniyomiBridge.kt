@@ -61,6 +61,7 @@ class AniyomiBridge(private val context: Context) : MethodChannel.MethodCallHand
                 ?.map { ext ->
                     mapOf(
                         "id" to ext.pkgName,
+                        "pkgName" to ext.pkgName,
                         "name" to ext.name,
                         "lang" to ext.lang,
                         "isNsfw" to ext.isNsfw,
@@ -92,6 +93,7 @@ class AniyomiBridge(private val context: Context) : MethodChannel.MethodCallHand
                 ?.map { ext ->
                     mapOf(
                         "id" to ext.pkgName,
+                        "pkgName" to ext.pkgName,
                         "name" to ext.name,
                         "lang" to ext.lang,
                         "isNsfw" to ext.isNsfw,
@@ -129,6 +131,7 @@ class AniyomiBridge(private val context: Context) : MethodChannel.MethodCallHand
                     mapOf(
                         "name" to ext.name,
                         "id" to ext.pkgName,
+                        "pkgName" to ext.pkgName,
                         "version" to ext.versionName,
                         "libVersion" to ext.libVersion,
                         "supportedLanguages" to ext.sources.map { it.lang },
@@ -168,6 +171,7 @@ class AniyomiBridge(private val context: Context) : MethodChannel.MethodCallHand
                     mapOf(
                         "name" to ext.name,
                         "id" to ext.pkgName,
+                        "pkgName" to ext.pkgName,
                         "version" to ext.versionName,
                         "libVersion" to ext.libVersion,
                         "supportedLanguages" to ext.sources.map { it.lang },
