@@ -167,9 +167,14 @@ class MangayomiExtensions extends Extension {
 
     await _manager.uninstallSource(source);
 
-    final availableList = _getAvailableList(source.itemType!);
-    if (availableList.any((s) => s.sourceId == source.id)) {
-      getAvailableRx(source.itemType!).update((list) => list?.add(source));
+    final type = source.itemType!;
+    getInstalledRx(type).value = getInstalledRx(
+      type,
+    ).value.where((s) => s.id != source.id).toList();
+
+    final avail = getAvailableRx(type);
+    if (!avail.value.any((s) => s.id == source.id)) {
+      avail.value = [...avail.value, source];
     }
   }
 

@@ -228,7 +228,7 @@ class AniyomiExtensions extends Extension {
   }
 
   void _detectUpdates(List<ASource> available, ItemType type) {
-    final installed = getInstalledRx(type).value as List<ASource>;
+    final installed = getInstalledRx(type).value.whereType<ASource>().toList();
     final repoMap = {for (var s in available) s.id: s};
     bool changed = false;
 

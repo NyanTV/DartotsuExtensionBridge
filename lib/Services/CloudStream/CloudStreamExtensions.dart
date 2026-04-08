@@ -256,8 +256,14 @@ class CloudStreamExtensions extends Extension {
 
         _box.delete('cs_meta_${source.internalName ?? source.name}');
 
-        await fetchInstalledAnimeExtensions();
-        await fetchAnimeExtensions();
+        getInstalledRx(ItemType.anime).value = getInstalledRx(
+          ItemType.anime,
+        ).value.where((s) => s.id != source.id).toList();
+
+        final avail = getAvailableRx(ItemType.anime);
+        if (!avail.value.any((s) => s.id == source.id)) {
+          avail.value = [...avail.value, source];
+        }
       } catch (e) {
         Logger.log("Error uninstalling CloudStream source ${source.name}: $e");
         rethrow;
