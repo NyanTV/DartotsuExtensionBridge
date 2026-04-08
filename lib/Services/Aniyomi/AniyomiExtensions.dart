@@ -55,6 +55,8 @@ class AniyomiExtensions extends Extension {
   @override
   Future<void> fetchInstalledNovelExtensions() async {}
 
+  Future<void> Function(String packageName)? onUninstallRequested;
+
   Future<List<Source>> _loadInstalled(String method, ItemType type) async {
     try {
       final List<dynamic> result = await platform.invokeMethod(method, "");
@@ -309,62 +311,27 @@ class AniyomiExtensions extends Extension {
   @override
   Future<void> uninstallSource(Source source) async {
     final s = source as ASource;
-    final packageName = s.pkgName;
+    final packageName = s.pkgName?.isNotEmpty == true ? s.pkgName : s.id;
     if (packageName == null || packageName.isEmpty) {
-      throw Exception('Source ID is required for uninstallation.');
+      throw Exception('Package name is required for uninstallation.');
     }
     final type = source.itemType!;
 
-    try {
-      final isInstalled = await DeviceApps.isAppInstalled(packageName);
-      if (!isInstalled) {
-        getInstalledRx(type).value = getInstalledRx(
-          type,
-        ).value.where((e) => e.id != s.id).toList();
-        return;
-      }
-
-      final success = await DeviceApps.uninstallApp(packageName);
-      if (!success) {
-        throw Exception('Failed to initiate uninstallation for: $packageName');
-      }
-
-      const timeout = Duration(seconds: 10);
-      final start = DateTime.now();
-      while (DateTime.now().difference(start) < timeout) {
-        final stillInstalled = await DeviceApps.isAppInstalled(packageName);
-        if (!stillInstalled) break;
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
-
-      final finalCheck = await DeviceApps.isAppInstalled(packageName);
-      if (finalCheck) {
-        throw Exception('Uninstallation timed out or was cancelled by user.');
-      }
-
-      final raw = getRawAvailableRx(type).value;
-      final installed = getInstalledRx(type).value;
-      final installedIds = installed.map((e) => e.id).toSet();
-      getAvailableRx(type).value = List.unmodifiable(
-        raw.where((e) => !installedIds.contains(e.id)),
-      );
-
-      switch (s.itemType) {
-        case ItemType.anime:
-          await fetchInstalledAnimeExtensions();
-          break;
-        case ItemType.manga:
-          await fetchInstalledMangaExtensions();
-          break;
-        default:
-          break;
-      }
-
-      Logger.log('Successfully uninstalled package: $packageName');
-    } catch (e) {
-      Logger.log('Error uninstalling $packageName: $e');
-      rethrow;
+    if (onUninstallRequested == null) {
+      throw Exception('No uninstall handler registered.');
     }
+
+    getInstalledRx(type).value = List.unmodifiable(
+      getInstalledRx(type).value.where((e) => e.id != s.id),
+    );
+    final raw = getRawAvailableRx(type).value;
+    final installedIds = getInstalledRx(type).value.map((e) => e.id).toSet();
+    getAvailableRx(type).value = List.unmodifiable(
+      raw.where((e) => !installedIds.contains(e.id)),
+    );
+
+    await onUninstallRequested!(packageName);
+    Logger.log('Uninstall initiated for: $packageName');
   }
 
   @override
