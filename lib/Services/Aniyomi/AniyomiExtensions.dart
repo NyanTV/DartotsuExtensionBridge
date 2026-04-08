@@ -131,12 +131,22 @@ class AniyomiExtensions extends Extension {
     final results = await Future.wait(repos.map((r) => _fetchRepo(r, type)));
     final all = results.expand((e) => e).toList(growable: false);
     final installed = getInstalledRx(type).value;
-    final installedIds = installed.map((e) => e.id).toSet();
+
+    final installedPkgNames = installed
+        .whereType<ASource>()
+        .map((e) => e.pkgName)
+        .whereType<String>()
+        .toSet();
 
     _detectUpdates(all.cast<ASource>(), type);
     getRawAvailableRx(type).value = List.unmodifiable(all);
 
-    return List.unmodifiable(all.where((s) => !installedIds.contains(s.id)));
+    return List.unmodifiable(
+      all.where((s) {
+        final a = s as ASource;
+        return !installedPkgNames.contains(a.pkgName);
+      }),
+    );
   }
 
   Future<List<Source>> _fetchRepo(Repo repo, ItemType type) async {
@@ -311,10 +321,7 @@ class AniyomiExtensions extends Extension {
   @override
   Future<void> uninstallSource(Source source) async {
     final s = source as ASource;
-    final packageName = s.pkgName?.isNotEmpty == true ? s.pkgName : s.id;
-    if (packageName == null || packageName.isEmpty) {
-      throw Exception('Package name is required for uninstallation.');
-    }
+    final packageName = s.pkgName?.isNotEmpty == true ? s.pkgName! : s.id!;
     final type = source.itemType!;
 
     if (onUninstallRequested == null) {
@@ -324,10 +331,18 @@ class AniyomiExtensions extends Extension {
     getInstalledRx(type).value = List.unmodifiable(
       getInstalledRx(type).value.where((e) => e.id != s.id),
     );
+
     final raw = getRawAvailableRx(type).value;
-    final installedIds = getInstalledRx(type).value.map((e) => e.id).toSet();
+    final remainingPkgNames = getInstalledRx(type).value
+        .whereType<ASource>()
+        .map((e) => e.pkgName)
+        .whereType<String>()
+        .toSet();
     getAvailableRx(type).value = List.unmodifiable(
-      raw.where((e) => !installedIds.contains(e.id)),
+      raw.where((e) {
+        final a = e as ASource;
+        return !remainingPkgNames.contains(a.pkgName);
+      }),
     );
 
     await onUninstallRequested!(packageName);
