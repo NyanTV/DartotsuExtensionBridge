@@ -297,9 +297,6 @@ class AniyomiExtensions extends Extension {
         );
       }
 
-      final avail = getAvailableRx(aSource.itemType!);
-      avail.value = avail.value.where((e) => e.id != aSource.id).toList();
-
       switch (aSource.itemType) {
         case ItemType.anime:
           await fetchInstalledAnimeExtensions();
@@ -310,6 +307,20 @@ class AniyomiExtensions extends Extension {
         default:
           break;
       }
+
+      final installedPkgNames = getInstalledRx(aSource.itemType!).value
+          .whereType<ASource>()
+          .map((e) => e.pkgName)
+          .whereType<String>()
+          .toSet();
+
+      final avail = getAvailableRx(aSource.itemType!);
+      avail.value = List.unmodifiable(
+        avail.value.where((e) {
+          final a = e as ASource;
+          return !installedPkgNames.contains(a.pkgName);
+        }),
+      );
 
       Logger.log('Successfully installed package: $packageName');
     } catch (e) {
