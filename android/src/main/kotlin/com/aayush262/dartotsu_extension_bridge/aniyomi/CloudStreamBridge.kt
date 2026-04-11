@@ -46,7 +46,11 @@ class CloudStreamBridge(private val context: Context) : MethodChannel.MethodCall
                         val ok = manager.loadPlugin(path)
                         withContext(Dispatchers.Main) {
                             if (ok) result.success(true)
-                            else result.error("LOAD_FAILED", "Failed to load plugin: $path", null)
+                            else result.error(
+                                "LOAD_FAILED",
+                                "Failed to load plugin: $path",
+                                "Check logcat with tag CloudStreamManager for details"
+                            )
                         }
                     } catch (e: Throwable) {
                         withContext(Dispatchers.Main) {
