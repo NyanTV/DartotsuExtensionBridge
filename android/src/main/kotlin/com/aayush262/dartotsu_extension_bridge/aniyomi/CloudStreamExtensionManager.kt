@@ -49,9 +49,33 @@ class CloudStreamExtensionManager(private val context: Context) {
             val optimizedDir = File(context.cacheDir, "cs_dex_${sourceFile.nameWithoutExtension}_${sourceFile.lastModified()}")
             optimizedDir.mkdirs()
 
+            val dexFile = File(optimizedDir, "${sourceFile.nameWithoutExtension}.dex")
+            if (!dexFile.exists()) {
+                try {
+                    val zip = java.util.zip.ZipFile(safeFile)
+                    zip.use { zf ->
+                        val dexEntry = zf.getEntry("classes.dex")
+                            ?: throw IllegalStateException("No classes.dex in ${sourceFile.name}")
+                        zf.getInputStream(dexEntry).use { input ->
+                            dexFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                    dexFile.setReadOnly()
+                    Log.i(TAG, "Extracted classes.dex to: ${dexFile.absolutePath}")
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Failed to extract classes.dex: ${e.message}", e)
+                    return@withContext false
+                }
+            }
+
+            val dexOutputDir = File(context.cacheDir, "cs_odex_${sourceFile.nameWithoutExtension}_${sourceFile.lastModified()}")
+            dexOutputDir.mkdirs()
+
             val loader = DexClassLoader(
-                safeFile.absolutePath,
-                optimizedDir.absolutePath,
+                dexFile.absolutePath,
+                dexOutputDir.absolutePath,
                 null,
                 context.classLoader
             )
