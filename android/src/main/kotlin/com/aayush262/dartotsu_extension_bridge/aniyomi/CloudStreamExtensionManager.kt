@@ -22,17 +22,39 @@ class CloudStreamExtensionManager(private val context: Context) {
 
     suspend fun loadPlugin(apkPath: String): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
-            val file = File(apkPath)
-            if (!file.exists()) {
+            val sourceFile = File(apkPath)
+            if (!sourceFile.exists()) {
                 Log.e(TAG, "Plugin file does not exist: $apkPath")
                 return@withContext false
             }
 
-            val optimizedDir = File(context.cacheDir, "cs_dex_${file.nameWithoutExtension}_${file.lastModified()}")
+            val safeDir = File(context.filesDir, "cs_plugins")
+            safeDir.mkdirs()
+
+            val safeName = "cs_${sourceFile.nameWithoutExtension}_${sourceFile.lastModified()}.cs3"
+            val safeFile = File(safeDir, safeName)
+
+            if (!safeFile.exists()) {
+                safeDir.listFiles()?.forEach { f ->
+                    if (f.name.startsWith("cs_${sourceFile.nameWithoutExtension}_")) {
+                        f.delete()
+                    }
+                }
+                sourceFile.copyTo(safeFile, overwrite = true)
+                safeFile.setReadOnly()
+                Log.i(TAG, "Copied plugin to safe location: ${safeFile.absolutePath}")
+            } else {
+                Log.i(TAG, "Using cached safe copy: ${safeFile.absolutePath}")
+            }
+
+            val optimizedDir = File(
+                context.cacheDir,
+                "cs_dex_${sourceFile.nameWithoutExtension}_${sourceFile.lastModified()}"
+            )
             optimizedDir.mkdirs()
 
             val loader = DexClassLoader(
-                file.absolutePath,
+                safeFile.absolutePath,
                 optimizedDir.absolutePath,
                 null,
                 context.classLoader
