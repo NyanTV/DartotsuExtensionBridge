@@ -60,7 +60,7 @@ class CloudStreamExtensionManager(private val context: Context) {
                 context.classLoader
             )
 
-            val pluginClass = findPluginClass(loader, file) ?: run {
+            val pluginClass = findPluginClass(loader, safeFile) ?: run {
                 Log.e(TAG, "Could not find any plugin class in: $apkPath")
                 return@withContext false
             }
@@ -84,7 +84,7 @@ class CloudStreamExtensionManager(private val context: Context) {
                 }
             }
 
-            val internalName = tryGetName(pluginClass, instance) ?: file.nameWithoutExtension
+            val internalName = tryGetName(pluginClass, instance) ?: sourceFile.nameWithoutExtension
 
             loadedPlugins[internalName] = CloudStreamPlugin(
                 internalName = internalName,
