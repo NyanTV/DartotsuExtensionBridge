@@ -48,7 +48,9 @@ class ExtensionManager extends GetxController {
     final isRuntimeHostLoaded = await DartotsuExtensionBridge.isLoaded();
     if (isRuntimeHostLoaded) {
       await _registerAndInitializeManagers(
-        [AniyomiExtensions(), CloudStreamExtensions()],
+        [
+          AniyomiExtensions(),
+        ], //, CloudStreamExtensions()], will add this sometime in future
         insertAtStart: true,
         onManagerInitializing: onManagerInitializing,
       );
