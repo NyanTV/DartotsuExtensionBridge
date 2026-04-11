@@ -28,6 +28,9 @@ class CloudStreamExtensionManager(private val context: Context) {
                 return@withContext false
             }
 
+            val manifest = readManifest(sourceFile)
+            Log.i(TAG, "Manifest for ${sourceFile.name}: $manifest")
+
             val safeDir = File(context.filesDir, "cs_plugins")
             safeDir.mkdirs()
 
@@ -36,21 +39,14 @@ class CloudStreamExtensionManager(private val context: Context) {
 
             if (!safeFile.exists()) {
                 safeDir.listFiles()?.forEach { f ->
-                    if (f.name.startsWith("cs_${sourceFile.nameWithoutExtension}_")) {
-                        f.delete()
-                    }
+                    if (f.name.startsWith("cs_${sourceFile.nameWithoutExtension}_")) f.delete()
                 }
                 sourceFile.copyTo(safeFile, overwrite = true)
                 safeFile.setReadOnly()
-                Log.i(TAG, "Copied plugin to safe location: ${safeFile.absolutePath}")
-            } else {
-                Log.i(TAG, "Using cached safe copy: ${safeFile.absolutePath}")
+                Log.i(TAG, "Copied to safe location: ${safeFile.absolutePath}")
             }
 
-            val optimizedDir = File(
-                context.cacheDir,
-                "cs_dex_${sourceFile.nameWithoutExtension}_${sourceFile.lastModified()}"
-            )
+            val optimizedDir = File(context.cacheDir, "cs_dex_${sourceFile.nameWithoutExtension}_${sourceFile.lastModified()}")
             optimizedDir.mkdirs()
 
             val loader = DexClassLoader(
@@ -60,31 +56,44 @@ class CloudStreamExtensionManager(private val context: Context) {
                 context.classLoader
             )
 
-            val pluginClass = findPluginClass(loader, safeFile) ?: run {
-                Log.e(TAG, "Could not find any plugin class in: $apkPath")
+            val className = manifest?.get("pluginClassName") as? String
+                ?: manifest?.get("className") as? String
+
+            if (className == null) {
+                Log.e(TAG, "No pluginClassName in manifest for ${sourceFile.name}")
                 return@withContext false
             }
 
-            Log.i(TAG, "Found plugin class: ${pluginClass.name}")
+            Log.i(TAG, "Loading class: $className")
+            val pluginClass = try {
+                loader.loadClass(className)
+            } catch (e: ClassNotFoundException) {
+                Log.e(TAG, "Class $className not found: ${e.message}")
+                return@withContext false
+            }
 
             val instance = try {
                 pluginClass.getDeclaredConstructor().newInstance()
             } catch (e: Throwable) {
-                Log.e(TAG, "Could not instantiate ${pluginClass.name}: ${e.message}", e)
+                Log.e(TAG, "Could not instantiate $className: ${e.message}", e)
                 return@withContext false
             }
 
             try {
                 pluginClass.getMethod("load", Context::class.java).invoke(instance, context)
+                Log.i(TAG, "load(context) called on $className")
             } catch (_: NoSuchMethodException) {
                 try {
                     pluginClass.getMethod("load").invoke(instance)
+                    Log.i(TAG, "load() called on $className")
                 } catch (_: NoSuchMethodException) {
-                    Log.d(TAG, "No load() method found in ${pluginClass.name}")
+                    Log.d(TAG, "No load() method in $className")
                 }
             }
 
-            val internalName = tryGetName(pluginClass, instance) ?: sourceFile.nameWithoutExtension
+            val internalName = manifest?.get("name") as? String
+                ?: tryGetName(pluginClass, instance)
+                ?: sourceFile.nameWithoutExtension
 
             loadedPlugins[internalName] = CloudStreamPlugin(
                 internalName = internalName,
@@ -93,7 +102,7 @@ class CloudStreamExtensionManager(private val context: Context) {
                 providerClass = pluginClass
             )
 
-            Log.i(TAG, "Successfully loaded CloudStream plugin: $internalName")
+            Log.i(TAG, "Successfully loaded: $internalName ($className)")
             true
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to load plugin $apkPath: ${e.message}", e)
@@ -101,68 +110,25 @@ class CloudStreamExtensionManager(private val context: Context) {
         }
     }
 
-    private fun findPluginClass(loader: DexClassLoader, file: File): Class<*>? {
-        val knownNames = listOf(
-            "com.lagradost.cloudstream3.plugins.Plugin",
-            "Plugin",
-            "MainPlugin",
-            "CloudStreamPlugin",
-        )
-        for (name in knownNames) {
-            try {
-                val cls = loader.loadClass(name)
-                Log.d(TAG, "Found class by known name: $name")
-                return cls
-            } catch (_: ClassNotFoundException) {}
-        }
-
-        try {
-            val pathListField = Class.forName("dalvik.system.BaseDexClassLoader")
-                .getDeclaredField("pathList")
-                .also { it.isAccessible = true }
-            val pathList = pathListField.get(loader)
-
-            val dexElementsField = pathList.javaClass
-                .getDeclaredField("dexElements")
-                .also { it.isAccessible = true }
-            val dexElements = dexElementsField.get(pathList) as Array<*>
-
-            for (element in dexElements) {
-                val dexFileField = element!!.javaClass
-                    .getDeclaredField("dexFile")
-                    .also { it.isAccessible = true }
-                val dexFile = dexFileField.get(element) ?: continue
-
-                val entriesMethod = dexFile.javaClass.getMethod("entries")
-                @Suppress("UNCHECKED_CAST")
-                val entries = entriesMethod.invoke(dexFile) as? java.util.Enumeration<String> ?: continue
-
-                while (entries.hasMoreElements()) {
-                    val className = entries.nextElement()
-                    try {
-                        val cls = loader.loadClass(className)
-                        val superNames = generateSequence(cls.superclass) { it.superclass }
-                            .map { it.name }
-                            .toList()
-                        val interfaceNames = cls.interfaces.map { it.name }
-
-                        val isPlugin = superNames.any { it.contains("Plugin", ignoreCase = true) } ||
-                            interfaceNames.any { it.contains("Plugin", ignoreCase = true) } ||
-                            cls.name.endsWith("Plugin") ||
-                            cls.name.endsWith("Provider")
-
-                        if (isPlugin && !cls.isInterface && !cls.isAbstract()) {
-                            Log.d(TAG, "Found candidate plugin class via scan: $className")
-                            return cls
-                        }
-                    } catch (_: Throwable) {}
+    private fun readManifest(file: File): Map<String, Any?>? {
+        return try {
+            val zip = java.util.zip.ZipFile(file)
+            zip.use { zf ->
+                val entry = zf.getEntry("manifest.json") ?: run {
+                    Log.w(TAG, "No manifest.json in ${file.name}")
+                    return null
                 }
+                val text = zf.getInputStream(entry).bufferedReader().readText()
+                Log.d(TAG, "manifest.json: $text")
+                val json = org.json.JSONObject(text)
+                val map = mutableMapOf<String, Any?>()
+                json.keys().forEach { key -> map[key] = json.get(key) }
+                map
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "Dex scanning failed: ${e.message}", e)
+            Log.e(TAG, "readManifest failed for ${file.name}: ${e.message}")
+            null
         }
-
-        return null
     }
 
     private fun Class<*>.isAbstract(): Boolean =
