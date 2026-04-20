@@ -208,7 +208,6 @@ class MangayomiExtensionManager extends GetxController {
 
       var s = mSource
         ..sourceCode = req.body
-        ..version = source.version
         ..headers = jsonEncode(headers);
 
       await isar.writeTxnSync(() async => isar.mSources.putSync(s));

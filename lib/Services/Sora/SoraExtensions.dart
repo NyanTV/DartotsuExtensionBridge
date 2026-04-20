@@ -290,7 +290,7 @@ class SoraExtensions extends Extension {
 
       installed[index] = installed[index]
         ..sourceCode = res.body
-        ..version = s.version
+        ..version = s.versionLast ?? s.version
         ..hasUpdate = false;
 
       _saveInstalled(installed, s.itemType!);
